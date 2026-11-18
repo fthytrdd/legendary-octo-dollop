@@ -17,17 +17,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          # Enable Remote Desktop
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0 -Type DWord
-
-          # Disable Network Level Authentication (NLA)
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'UserAuthentication' -Value 0 -Type DWord
 
-          # Open TCP 3389 in Windows Firewall
           netsh advfirewall firewall add rule name="RDP-TCP-3389" dir=in action=allow protocol=TCP localport=3389 profile=any
           if ($LASTEXITCODE -ne 0) { throw 'Failed to add firewall rule.' }
 
-          # Restart Remote Desktop service
           Set-Service -Name 'TermService' -StartupType Automatic
           Restart-Service -Name 'TermService' -Force
           Start-Sleep -Seconds 5
@@ -50,7 +45,6 @@ jobs:
           $symbols = '@#!_'.ToCharArray()
           $all     = $upper + $lower + $digits + $symbols
 
-          # Guarantee one character from each class, then fill to 14 characters
           $chars = New-Object System.Collections.Generic.List[char]
           $chars.Add($upper[(Get-Rand $upper.Length)])
           $chars.Add($lower[(Get-Rand $lower.Length)])
@@ -60,7 +54,6 @@ jobs:
             $chars.Add($all[(Get-Rand $all.Length)])
           }
 
-          # Shuffle (Fisher-Yates)
           $arr = $chars.ToArray()
           for ($i = $arr.Length - 1; $i -gt 0; $i--) {
             $j = Get-Rand ($i + 1)
@@ -79,7 +72,6 @@ jobs:
           net localgroup "Remote Desktop Users" RDP /add
           if ($LASTEXITCODE -ne 0) { throw 'Failed to add RDP to Remote Desktop Users.' }
 
-          # Pass credentials to later steps
           Add-Content -Path $env:GITHUB_ENV -Value "RDP_USERNAME=RDP"
           Add-Content -Path $env:GITHUB_ENV -Value "RDP_PASSWORD=$password"
 
@@ -95,7 +87,7 @@ jobs:
 
           Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing
 
-          $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i "$msiPath" /quiet /norestart" -Wait -PassThru
+          $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', $msiPath, '/quiet', '/norestart') -Wait -PassThru
           if (($proc.ExitCode -ne 0) -and ($proc.ExitCode -ne 3010)) {
             throw "Tailscale MSI install failed with exit code $($proc.ExitCode)."
           }
@@ -103,7 +95,6 @@ jobs:
           $ts = 'C:\Program Files\Tailscale\tailscale.exe'
           if (-not (Test-Path $ts)) { throw 'tailscale.exe not found after installation.' }
 
-          # Wait for the Tailscale service to be running
           for ($i = 0; $i -lt 30; $i++) {
             $svc = Get-Service -Name 'Tailscale' -ErrorAction SilentlyContinue
             if ($svc -and $svc.Status -eq 'Running') { break }
@@ -150,7 +141,6 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $ts = 'C:\Program Files\Tailscale\tailscale.exe'
 
-          # Wait for a Tailscale IPv4 address
           $ip = $null
           for ($i = 0; $i -lt 60; $i++) {
             $out = & $ts ip -4 2>$null
@@ -165,7 +155,6 @@ jobs:
           }
           if (-not $ip) { throw 'Timed out waiting for a Tailscale IPv4 address.' }
 
-          # Verify TCP 3389 is open on the Tailscale IP
           $open = $false
           for ($i = 0; $i -lt 30; $i++) {
             $client = New-Object System.Net.Sockets.TcpClient
